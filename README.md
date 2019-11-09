@@ -1,3 +1,5 @@
+This is built on the Deuces engine by worldveil (https://github.com/worldveil/deuces). Here is his documentation on how to use the deuces engine.
+
 Deuces
 ========
 
