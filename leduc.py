@@ -1,6 +1,7 @@
 from deuces import Card
 from deuces import Deck
 from deuces import Evaluator
+import random
 
 class Poker:
     '''
@@ -35,7 +36,6 @@ class Poker:
         self.state['player2Stack'] = player2Stack
         self.state['player1Fold'] = False
         self.state['player2Fold'] = False
-        self.actions = ['call', 'bet', 'raise', 'fold', 'check']
 
     def printState(self):
         print('Current Game State')
@@ -74,6 +74,7 @@ class Poker:
                     self.state['player1Stack'] -= 1
                 else:
                     print("Invalid action.")
+                    raise
                 self.state['currentPlayer'] = 'Player2'
             else:
                 if action == 'call':
@@ -83,6 +84,7 @@ class Poker:
                     self.state['player1Fold'] = True
                 else:
                     print("Invalid action.")
+                    raise
                 self.state['currentPlayer'] = 'Dealer'
             # Append player1's action to the state.
             self.state['player1Actions'].append(action)
@@ -106,16 +108,17 @@ class Poker:
                 self.state['currentPlayer'] = 'Player1'
             else:
                 print("Invalid action.")
+                raise
         elif current_player == 'Dealer':
             num_to_draw = 1
             if len(self.state['communityCards']) == 0:
                 num_to_draw = 3
             # Draw 1 or 3 random card to the communityCards. refreshState back to currentPlayer = player1.
-            self.state['communityCards'].append(self.state['deck'].draw(num_to_draw))
+            self.state['communityCards'] += [self.state['deck'].draw(1) for i in range(num_to_draw)]
             self.refreshState()
-
         else:
             print("Invalid input state.")
+            raise
 
     def isEnd(self):
         if len(self.state['communityCards']) == self.num_rounds:
@@ -133,9 +136,8 @@ class Poker:
             return ['draw_card']
 
         if self.state['currentPlayer'] == 'Player1':
-            if sum(self.state['player1Bets']) == sum(self.state[
-                                                         'player2Bets']):  # this is the bit that tells player1 if he is going for the first time
-                if maxBet(state) > 0:
+            if sum(self.state['player1Bets']) == sum(self.state['player2Bets']):
+                if maxBet(self.state) > 0:
                     return ['check', 'bet']
                 else:
                     return ['check']
@@ -146,7 +148,7 @@ class Poker:
             if sum(self.state['player1Bets']) > sum(self.state['player2Bets']):
                 return ['fold', 'call', 'raise']
             else:
-                if maxBet(state) > 0:
+                if maxBet(self.state) > 0:
                     return ['check', 'raise']
                 else:
                     return ['check']
@@ -177,30 +179,53 @@ class Poker:
         return self.state['currentPlayer']
 
 
-num_rounds = 2
-hand_size = 2
-leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
-for i in range(num_rounds):
-    if leducGame.isEnd():
-        print('utility: {}'.format(leducGame.utility()))
-        break
-    while True:
-        if leducGame.player() == 'Dealer':
-            leducGame.state['communityCards'].append(leducGame.state['deck'].draw(1))
-            leducGame.state['currentPlayer'] = 'Player1'
-            break
-        elif leducGame.player() == 'Player1':
-            leducGame.state['currentPlayer'] = 'Player2'
-        elif leducGame.player() == 'Player2':
-            leducGame.state['currentPlayer'] = 'Dealer'
+# num_rounds = 2
+# hand_size = 2
+# leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
+# for i in range(num_rounds):
+#     if leducGame.isEnd():
+#         print('utility: {}'.format(leducGame.utility()))
+#         break
+#     while True:
+#         if leducGame.player() == 'Dealer':
+#             leducGame.state['communityCards'].append(leducGame.state['deck'].draw(1))
+#             leducGame.state['currentPlayer'] = 'Player1'
+#             break
+#         elif leducGame.player() == 'Player1':
+#             leducGame.state['currentPlayer'] = 'Player2'
+#         elif leducGame.player() == 'Player2':
+#             leducGame.state['currentPlayer'] = 'Dealer'
 
-    leducGame.printState()
-    print('currentUtilityEstimate: {}'.format(leducGame.currentUtilityEstimate()))
+#     leducGame.printState()
+#     print('currentUtilityEstimate: {}'.format(leducGame.currentUtilityEstimate()))
 
 leducGame = Poker(hand_size=1)
 leducGame.printState()
 print("*********************\n")
 leducGame.successor(leducGame.state, 'bet')
+leducGame.printState()
 leducGame.successor(leducGame.state, 'raise')
+leducGame.printState()
 leducGame.successor(leducGame.state, 'call')
 leducGame.printState()
+
+
+num_rounds = 5
+hand_size = 2
+
+utilities = []
+
+for i in xrange(5000):
+	leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
+	while True:
+		if leducGame.isEnd():
+			print('utility: {}'.format(leducGame.utility()))
+			utilities.append(leducGame.utility())
+			break
+		print('player: {}'.format(leducGame.player()))
+		print('legal actions: {}'.format(leducGame.actions()))
+		action = random.choice(leducGame.actions())
+		print('action take: {}'.format(action))
+		leducGame.successor(leducGame.state, action)
+
+print('avg utility: {}'.format(sum(utilities)/len(utilities)))
