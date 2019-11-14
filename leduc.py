@@ -29,7 +29,7 @@ class Poker:
         self.state['player1Hand'] = [self.state['deck'].draw(1) for i in range(hand_size)]
         self.state['player2Hand'] = [self.state['deck'].draw(1) for i in range(hand_size)]
         self.state['player1Actions'] = []
-        self.state['communityCards'] = []
+        self.state['communityCards'] = self.state['deck'].draw(3)
         self.state['player1Bets'] = []
         self.state['player2Bets'] = []
         self.state['player1Stack'] = player1Stack
@@ -199,6 +199,62 @@ class Poker:
 #     leducGame.printState()
 #     print('currentUtilityEstimate: {}'.format(leducGame.currentUtilityEstimate()))
 
+
+action_aggression_map = {}
+action_aggression_map['fold'] = 0
+action_aggression_map['check'] = 3
+action_aggression_map['call'] = 7
+action_aggression_map['bet'] = 7
+action_aggression_map['raise'] = 10
+
+def random_player(game):
+    return random.choice(leducGame.actions())
+
+def aggressive_player(game):
+    max_aggression = -10
+    chosen_action = None
+    for action in game.actions():
+        if action_aggression_map[action] > max_aggression:
+            max_aggression = action_aggression_map[action]
+            chosen_action = action
+    return action
+
+def baseline_player(game):
+
+    def action_given_hand_strength_pct(hand_strength_pct):
+        print('hand_strength_pct: {}'.format(hand_strength_pct))
+        aggression = 0
+        if hand_strength_pct > 0.9:
+            aggression = 10
+        elif hand_strength_pct > 0.7:
+            aggression = 6
+        elif hand_strength_pct > 0.3:
+            aggression = 3
+        else:
+            aggression = -1
+
+        min_dist = 10
+        chosen_action = None
+        for action in game.actions():
+            if abs(action_aggression_map[action] - aggression) < min_dist:
+                min_dist = abs(action_aggression_map[action] - aggression)
+                chosen_action = action
+        return chosen_action
+
+    if game.player() == 'Player1':
+        hand_strength = game.evaluator.evaluate(game.state['player1Hand'], game.state['communityCards'])
+        hand_strength_pct = game.evaluator.get_five_card_rank_percentage(hand_strength)
+        return action_given_hand_strength_pct(hand_strength_pct)
+
+    elif game.player() == 'Player2':
+        hand_strength = game.evaluator.evaluate(game.state['player2Hand'], game.state['communityCards'])
+        hand_strength_pct = game.evaluator.get_five_card_rank_percentage(hand_strength)
+        return action_given_hand_strength_pct(hand_strength_pct)
+
+    else:
+        return 'draw_card'
+
+
 leducGame = Poker(hand_size=1)
 leducGame.printState()
 print("*********************\n")
@@ -215,17 +271,24 @@ hand_size = 2
 
 utilities = []
 
-for i in xrange(5000):
-	leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
-	while True:
-		if leducGame.isEnd():
-			print('utility: {}'.format(leducGame.utility()))
-			utilities.append(leducGame.utility())
-			break
-		print('player: {}'.format(leducGame.player()))
-		print('legal actions: {}'.format(leducGame.actions()))
-		action = random.choice(leducGame.actions())
-		print('action take: {}'.format(action))
-		leducGame.successor(leducGame.state, action)
+# Simulate basline player against random player
+for i in xrange(1000):
+    leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
+    while True:
+        if leducGame.isEnd():
+            print('utility: {}'.format(leducGame.utility()))
+            utilities.append(leducGame.utility())
+            break
+        print('player: {}'.format(leducGame.player()))
+        print('legal actions: {}'.format(leducGame.actions()))
+        if leducGame.player() == 'Player1':
+            action = baseline_player(leducGame)
+        elif leducGame.player() == 'Player2':
+            action = random_player(leducGame)
+        else:
+            action = 'draw_card'
+        print('action take: {}'.format(action))
+        leducGame.successor(leducGame.state, action)
 
 print('avg utility: {}'.format(sum(utilities)/len(utilities)))
+print('utilities: {}'.format(utilities))
