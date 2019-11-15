@@ -22,6 +22,8 @@ class Poker:
 
     def __init__(self, num_rounds = 2, hand_size=2, player1Stack=100, player2Stack=100):
         self.num_rounds = num_rounds
+        self.player1StackStart = player1Stack
+        self.player2StackStart = player2Stack
         self.evaluator = Evaluator()
         self.state = {}
         self.state['deck'] = Deck()
@@ -158,16 +160,16 @@ class Poker:
             return sum(state['player1Bets']) + sum(state['player2Bets'])
 
         if self.state['player1Fold']:
-            return self.state['player1Stack'] - self.state['player2Stack'] - pot(self.state)
+            return self.state['player1Stack'] - self.player1StackStart
         if self.state['player2Fold']:
-            return self.state['player1Stack'] - self.state['player2Stack'] + pot(self.state)
+            return self.state['player1Stack'] + pot(self.state) - self.player1StackStart
 
         player1HandVal = self.evaluator.evaluate(self.state['player1Hand'], self.state['communityCards'])
         player2HandVal = self.evaluator.evaluate(self.state['player2Hand'], self.state['communityCards'])
         if player1HandVal > player2HandVal:
-            return self.state['player1Stack'] - self.state['player2Stack'] + pot(self.state)
+            return self.state['player1Stack'] + pot(self.state) - self.player1StackStart
         else:
-            return self.state['player1Stack'] - self.state['player2Stack'] - pot(self.state)
+            return self.state['player1Stack'] - self.player1StackStart
 
     def utility(self):
         if self.isEnd():
@@ -222,24 +224,18 @@ def aggressive_player(game):
 def baseline_player(game):
 
     def action_given_hand_strength_pct(hand_strength_pct):
-        print('hand_strength_pct: {}'.format(hand_strength_pct))
-        aggression = 0
+        #print('hand_strength_pct: {}'.format(hand_strength_pct))
+        action_preference = []
         if hand_strength_pct > 0.9:
-            aggression = 10
-        elif hand_strength_pct > 0.7:
-            aggression = 6
-        elif hand_strength_pct > 0.3:
-            aggression = 3
+            action_preference = ['raise', 'call', 'bet', 'check']
+        elif hand_strength_pct > 0.8:
+            action_preference = ['call', 'bet', 'check']
         else:
-            aggression = -1
+            action_preference = ['check', 'fold']
 
-        min_dist = 10
-        chosen_action = None
-        for action in game.actions():
-            if abs(action_aggression_map[action] - aggression) < min_dist:
-                min_dist = abs(action_aggression_map[action] - aggression)
-                chosen_action = action
-        return chosen_action
+        for action in action_preference:
+            if action in game.actions():
+                return action
 
     if game.player() == 'Player1':
         hand_strength = game.evaluator.evaluate(game.state['player1Hand'], game.state['communityCards'])
@@ -266,29 +262,58 @@ leducGame.successor(leducGame.state, 'call')
 leducGame.printState()
 
 
+print('Random vs. Random')
 num_rounds = 5
 hand_size = 2
 
 utilities = []
 
 # Simulate basline player against random player
-for i in xrange(1000):
+for i in xrange(10000):
     leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
     while True:
         if leducGame.isEnd():
-            print('utility: {}'.format(leducGame.utility()))
+            #print('utility: {}'.format(leducGame.utility()))
             utilities.append(leducGame.utility())
             break
-        print('player: {}'.format(leducGame.player()))
-        print('legal actions: {}'.format(leducGame.actions()))
+        #print('player: {}'.format(leducGame.player()))
+        #print('legal actions: {}'.format(leducGame.actions()))
+        if leducGame.player() == 'Player1':
+            action = random_player(leducGame)
+        elif leducGame.player() == 'Player2':
+            action = random_player(leducGame)
+        else:
+            action = 'draw_card'
+        #print('action take: {}'.format(action))
+        leducGame.successor(leducGame.state, action)
+
+print('avg utility: {}'.format(sum(utilities)*1.0/len(utilities)))
+# print('utilities: {}'.format(utilities))
+
+print('Baseline vs. Random')
+num_rounds = 5
+hand_size = 2
+
+utilities = []
+
+# Simulate basline player against random player
+for i in xrange(10000):
+    leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
+    while True:
+        if leducGame.isEnd():
+            #print('utility: {}'.format(leducGame.utility()))
+            utilities.append(leducGame.utility())
+            break
+        #print('player: {}'.format(leducGame.player()))
+        #print('legal actions: {}'.format(leducGame.actions()))
         if leducGame.player() == 'Player1':
             action = baseline_player(leducGame)
         elif leducGame.player() == 'Player2':
             action = random_player(leducGame)
         else:
             action = 'draw_card'
-        print('action take: {}'.format(action))
+        #print('action take: {}'.format(action))
         leducGame.successor(leducGame.state, action)
 
-print('avg utility: {}'.format(sum(utilities)/len(utilities)))
-print('utilities: {}'.format(utilities))
+print('avg utility: {}'.format(sum(utilities)*1.0/len(utilities)))
+# print('utilities: {}'.format(utilities))
