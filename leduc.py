@@ -402,16 +402,32 @@ class QLearningAlgorithm(RLAlgorithm):
             self.weights[f] += step_size * (new_Q_estimate - current_Q_estimate)*v
         # END_YOUR_CODE
 
-# Return a single-element list containing a binary (indicator) feature
-# for the existence of the (state, action) pair.  Provides no generalization.
-def simpleFeatureExtractor(state, action):
-
+# Return a single indicator of the (hand strength (rounded to 1 decimal place), action)
+def handActionFeatureExtractor(state, action):
     hand_strength = evaluator.evaluate(state['player1Hand'], state['communityCards'])
     hand_strength_pct = evaluator.get_five_card_rank_percentage(hand_strength)
     rounded_hand_strength = '{0:.1f}'.format(hand_strength_pct)
 
     return [((rounded_hand_strength, action), 1.0)]
 
+# Return a single indicator of the (hand strength (rounded to 1 decimal place), pot, action)
+def handPotActionFeatureExtractor(state, action):
+    hand_strength = evaluator.evaluate(state['player1Hand'], state['communityCards'])
+    hand_strength_pct = evaluator.get_five_card_rank_percentage(hand_strength)
+    rounded_hand_strength = '{0:.1f}'.format(hand_strength_pct)
+    pot = sum(state['player1Bets']) + sum(state['player2Bets'])
+
+    return [((rounded_hand_strength, pot, action), 1.0)]    
+
+# Return a single indicator of the (hand strength (rounded to 1 decimal place), pot, round #, action)
+def handPotRoundsActionFeatureExtractor(state, action):
+    hand_strength = evaluator.evaluate(state['player1Hand'], state['communityCards'])
+    hand_strength_pct = evaluator.get_five_card_rank_percentage(hand_strength)
+    rounded_hand_strength = '{0:.1f}'.format(hand_strength_pct)
+    pot = sum(state['player1Bets']) + sum(state['player2Bets'])
+    round_num = len(state['communityCards'])
+
+    return [((rounded_hand_strength, pot, round_num, action), 1.0)]    
 
 # print('Oracle vs. Random')
 # utilities3 = []
@@ -466,20 +482,67 @@ def simpleFeatureExtractor(state, action):
 # print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 # print('==============')
 
-print('Simple RL vs. Random')
-simple_rl_player = QLearningAlgorithm(legalActions, simpleFeatureExtractor, explorationProb=0.3)
+print('=========================')
+print('Hand Action RL vs. Random')
+print('=========================')
+hand_action_rl_player = QLearningAlgorithm(legalActions, handActionFeatureExtractor, explorationProb=0.2)
 random_player = RandomPlayer()
-totalRewards = simulate(simple_rl_player, random_player, numTrials=50000)
 
+totalRewards = simulate(hand_action_rl_player, random_player, numTrials=50000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
 
-simple_rl_player.explorationProb = 0.0
-totalRewards = simulate(simple_rl_player, random_player, numTrials=10000)
-
+hand_action_rl_player.explorationProb = 0.0
+totalRewards = simulate(hand_action_rl_player, random_player, numTrials=10000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
 
-weights =  sorted([(k, v) for k, v in simple_rl_player.weights.items()], key=lambda x: x[1])
+print('Weights Learned:')
+weights =  sorted([(k, v) for k, v in hand_action_rl_player.weights.items()], key=lambda x: x[1])
+
+for k, v in weights:
+    if v != 0:
+        print('{}: {:.2f}'.format(k, v))
+
+print('=============================')
+print('Hand Pot Action RL vs. Random')
+print('=============================')
+hand_pot_action_rl_player = QLearningAlgorithm(legalActions, handPotActionFeatureExtractor, explorationProb=0.2)
+random_player = RandomPlayer()
+
+totalRewards = simulate(hand_pot_action_rl_player, random_player, numTrials=50000)
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
+
+hand_pot_action_rl_player.explorationProb = 0.0
+totalRewards = simulate(hand_pot_action_rl_player, random_player, numTrials=10000)
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
+
+print('Weights Learned:')
+weights =  sorted([(k, v) for k, v in hand_pot_action_rl_player.weights.items()], key=lambda x: x[1])
+
+for k, v in weights:
+    if v != 0:
+        print('{}: {:.2f}'.format(k, v))
+
+print('========================================')
+print('Hand Pot Action Num Rounds RL vs. Random')
+print('========================================')
+hand_pot_rounds_action_rl_player = QLearningAlgorithm(legalActions, handPotRoundsActionFeatureExtractor, explorationProb=0.2)
+random_player = RandomPlayer()
+
+totalRewards = simulate(hand_pot_rounds_action_rl_player, random_player, numTrials=50000)
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
+
+hand_pot_rounds_action_rl_player.explorationProb = 0.0
+totalRewards = simulate(hand_pot_rounds_action_rl_player, random_player, numTrials=10000)
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
+
+print('Weights Learned:')
+weights =  sorted([(k, v) for k, v in hand_pot_rounds_action_rl_player.weights.items()], key=lambda x: x[1])
 
 for k, v in weights:
     if v != 0:
