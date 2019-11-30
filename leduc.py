@@ -215,7 +215,7 @@ def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
         while True:
             if leducGame.isEnd():
                 totalReward = leducGame.utility()
-                player1.incorporateFeedback(player1Sequence[-4], player1Sequence[-3], totalReward, player1Sequence[-1])
+                player1.incorporateFeedback(player1Sequence[-4], player1Sequence[-3], totalReward, None)
                 # print('action: {}'.format(player1Sequence[-3]))
                 totalRewards.append(totalReward)
                 break
@@ -227,15 +227,23 @@ def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
                 player1Sequence.append(currState) # currState
                 player1Sequence.append(action) # action
                 player1Sequence.append(0.0) # reward
-                player1Sequence.append(newState) # newState
-                # player1.incorporateFeedback(currState, action, 0.0, newState)
+                if leducGame.isEnd():
+                    player1Sequence.append(newState) # newState
                 # print('action: {}'.format(action))
             elif leducGame.player() == 'Player2':
                 action = player2.getAction(leducGame)
                 leducGame.successor(leducGame.state, action)
+                if leducGame.player() == 'Player1' or leducGame.isEnd():
+                    player1Sequence.append(leducGame.getState())
+                if leducGame.player() == 'Player1':
+                    player1.incorporateFeedback(player1Sequence[-4], player1Sequence[-3], 0, player1Sequence[-1])
             else:
                 action = 'draw_card'
                 leducGame.successor(leducGame.state, action)
+                if leducGame.player() == 'Player1' or leducGame.isEnd():
+                    player1Sequence.append(leducGame.getState())
+                if leducGame.player() == 'Player1':
+                    player1.incorporateFeedback(player1Sequence[-4], player1Sequence[-3], 0, player1Sequence[-1])
 
         if trial % 1000 == 0:
             print('******* Game {} *******'.format(trial))
@@ -369,9 +377,6 @@ class QLearningAlgorithm(RLAlgorithm):
         if random.random() < self.explorationProb:
             return random.choice(self.actions(game.getState()))
         else:
-            # for action in self.actions(game.getState()):
-            #     if self.getQ(game.getState(), action) != 0:
-            #         print('great!')
             actions = self.actions(game.getState())
             random.shuffle(actions)
             return max((self.getQ(game.getState(), action), action) for action in actions)[1]
@@ -386,16 +391,15 @@ class QLearningAlgorithm(RLAlgorithm):
     # self.getQ() to compute the current estimate of the parameters.
     def incorporateFeedback(self, state, action, reward, newState):
         # BEGIN_YOUR_CODE (our solution is 9 lines of code, but don't worry if you deviate from this)
-        if newState == None:
-            return
-        else:
-            # V_estimate_new_state = min([self.getQ(newState, action) for action in self.actions(newState)])
-            V_estimate_new_state = 0
-            new_Q_estimate = reward + V_estimate_new_state
-            current_Q_estimate = self.getQ(state, action)
-            step_size = self.getStepSize()
-            for f, v in self.featureExtractor(state, action):
-                self.weights[f] += step_size * (new_Q_estimate - current_Q_estimate)*v
+        V_estimate_new_state = 0
+        if newState != None:
+            V_estimate_new_state = max([self.getQ(newState, a) for a in self.actions(newState)])
+
+        new_Q_estimate = reward + V_estimate_new_state
+        current_Q_estimate = self.getQ(state, action)
+        step_size = self.getStepSize()
+        for f, v in self.featureExtractor(state, action):
+            self.weights[f] += step_size * (new_Q_estimate - current_Q_estimate)*v
         # END_YOUR_CODE
 
 # Return a single-element list containing a binary (indicator) feature
@@ -463,9 +467,9 @@ def simpleFeatureExtractor(state, action):
 # print('==============')
 
 print('Simple RL vs. Random')
-simple_rl_player = QLearningAlgorithm(legalActions, simpleFeatureExtractor, explorationProb=0.2)
+simple_rl_player = QLearningAlgorithm(legalActions, simpleFeatureExtractor, explorationProb=0.3)
 random_player = RandomPlayer()
-totalRewards = simulate(simple_rl_player, random_player, numTrials=20000)
+totalRewards = simulate(simple_rl_player, random_player, numTrials=50000)
 
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
@@ -475,4 +479,8 @@ totalRewards = simulate(simple_rl_player, random_player, numTrials=10000)
 
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 
-print(simple_rl_player.weights)
+weights =  sorted([(k, v) for k, v in simple_rl_player.weights.items()], key=lambda x: x[1])
+
+for k, v in weights:
+    if v != 0:
+        print('{}: {:.2f}'.format(k, v))
