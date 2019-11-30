@@ -216,6 +216,7 @@ def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
             if leducGame.isEnd():
                 totalReward = leducGame.utility()
                 player1.incorporateFeedback(player1Sequence[-4], player1Sequence[-3], totalReward, player1Sequence[-1])
+                # print('action: {}'.format(player1Sequence[-3]))
                 totalRewards.append(totalReward)
                 break
             if leducGame.player() == 'Player1':
@@ -227,7 +228,8 @@ def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
                 player1Sequence.append(action) # action
                 player1Sequence.append(0.0) # reward
                 player1Sequence.append(newState) # newState
-                player1.incorporateFeedback(currState, action, 0.0, newState)
+                # player1.incorporateFeedback(currState, action, 0.0, newState)
+                # print('action: {}'.format(action))
             elif leducGame.player() == 'Player2':
                 action = player2.getAction(leducGame)
                 leducGame.successor(leducGame.state, action)
@@ -367,11 +369,16 @@ class QLearningAlgorithm(RLAlgorithm):
         if random.random() < self.explorationProb:
             return random.choice(self.actions(game.getState()))
         else:
-            return max((self.getQ(game.getState(), action), action) for action in self.actions(game.getState()))[1]
+            # for action in self.actions(game.getState()):
+            #     if self.getQ(game.getState(), action) != 0:
+            #         print('great!')
+            actions = self.actions(game.getState())
+            random.shuffle(actions)
+            return max((self.getQ(game.getState(), action), action) for action in actions)[1]
 
     # Call this function to get the step size to update the weights.
     def getStepSize(self):
-        return 1.0 / math.sqrt(self.numIters)
+        return 1.0 / math.sqrt(self.numIters + 10.0)
 
     # We will call this function with (s, a, r, s'), which you should use to update |weights|.
     # Note that if s is a terminal state, then s' will be None.  Remember to check for this.
@@ -382,7 +389,8 @@ class QLearningAlgorithm(RLAlgorithm):
         if newState == None:
             return
         else:
-            V_estimate_new_state = max([self.getQ(newState, action) for action in self.actions(newState)])
+            # V_estimate_new_state = min([self.getQ(newState, action) for action in self.actions(newState)])
+            V_estimate_new_state = 0
             new_Q_estimate = reward + V_estimate_new_state
             current_Q_estimate = self.getQ(state, action)
             step_size = self.getStepSize()
@@ -396,79 +404,9 @@ def simpleFeatureExtractor(state, action):
 
     hand_strength = evaluator.evaluate(state['player1Hand'], state['communityCards'])
     hand_strength_pct = evaluator.get_five_card_rank_percentage(hand_strength)
+    rounded_hand_strength = '{0:.1f}'.format(hand_strength_pct)
 
-    return [('hand_strength', hand_strength_pct), (action, 1.0)]
-
-
-# leducGame = Poker(hand_size=1)
-# leducGame.printState()
-# print("*********************\n")
-# leducGame.successor(leducGame.state, 'bet')
-# leducGame.printState()
-# leducGame.successor(leducGame.state, 'raise')
-# leducGame.printState()
-# leducGame.successor(leducGame.state, 'call')
-# leducGame.printState()
-
-
-# print('Random vs. Random')
-# num_rounds = 5
-# hand_size = 2
-# N = 1000
-
-# utilities1 = []
-
-# # Simulate basline player against random player
-# for i in xrange(N):
-#     random_player = RandomPlayer()
-#     leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
-#     while True:
-#         if leducGame.isEnd():
-#             #print('utility: {}'.format(leducGame.utility()))
-#             utilities1.append(leducGame.utility())
-#             break
-#         #print('player: {}'.format(leducGame.player()))
-#         #print('legal legalActions: {}'.format(leducGame.legalActions()))
-#         if leducGame.player() == 'Player1':
-#             action = random_player.getAction(leducGame)
-#         elif leducGame.player() == 'Player2':
-#             action = random_player.getAction(leducGame)
-#         else:
-#             action = 'draw_card'
-#         #print('action take: {}'.format(action))
-#         leducGame.successor(leducGame.state, action)
-#     if i % 1000 == 0:
-#         print("************game:{}***************".format(i))
-
-# print('avg utility: {}'.format(sum(utilities1)*1.0/len(utilities1)))
-
-# print('Baseline vs. Random')
-# utilities2 = []
-# # Simulate oracle player against random player
-# for i in xrange(N):
-#     baseline_player = BaselinePlayer()
-#     random_player = RandomPlayer()
-#     leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
-#     while True:
-#         if leducGame.isEnd():
-#             #print('utility: {}'.format(leducGame.utility()))
-#             utilities2.append(leducGame.utility())
-#             break
-#         #print('player: {}'.format(leducGame.player()))
-#         #print('legal legalActions: {}'.format(leducGame.legalActions()))
-#         if leducGame.player() == 'Player1':
-#             action = baseline_player.getAction(leducGame)
-#         elif leducGame.player() == 'Player2':
-#             action = random_player.getAction(leducGame)
-#         else:
-#             action = 'draw_card'
-        
-#         # print('action take: {}'.format(action))
-#         leducGame.successor(leducGame.state, action)
-#     if i % 1000 == 0:
-#         print("************game:{}***************".format(i))
-
-# print('avg utility: {}'.format(sum(utilities2)*1.0/len(utilities2)))
+    return [((rounded_hand_strength, action), 1.0)]
 
 
 # print('Oracle vs. Random')
@@ -509,25 +447,32 @@ def simpleFeatureExtractor(state, action):
 
 # print('avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 
-print('Random vs. Random')
-random_player = RandomPlayer()
-totalRewards = simulate(random_player, random_player, numTrials=5000)
+# print('Random vs. Random')
+# random_player = RandomPlayer()
+# totalRewards = simulate(random_player, random_player, numTrials=5000)
 
-print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
-print('==============')
+# print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+# print('==============')
 
-print('Baseline vs. Random')
-baseline_player = BaselinePlayer()
-random_player = RandomPlayer()
-totalRewards = simulate(baseline_player, random_player, numTrials=5000)
+# print('Baseline vs. Random')
+# baseline_player = BaselinePlayer()
+# random_player = RandomPlayer()
+# totalRewards = simulate(baseline_player, random_player, numTrials=5000)
 
-print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
-print('==============')
+# print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+# print('==============')
 
 print('Simple RL vs. Random')
-simple_rl_player = QLearningAlgorithm(legalActions, simpleFeatureExtractor)
+simple_rl_player = QLearningAlgorithm(legalActions, simpleFeatureExtractor, explorationProb=0.2)
 random_player = RandomPlayer()
-totalRewards = simulate(simple_rl_player, random_player, numTrials=5000)
+totalRewards = simulate(simple_rl_player, random_player, numTrials=20000)
 
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
+
+simple_rl_player.explorationProb = 0.0
+totalRewards = simulate(simple_rl_player, random_player, numTrials=10000)
+
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+
+print(simple_rl_player.weights)
