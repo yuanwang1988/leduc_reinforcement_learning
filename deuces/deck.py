@@ -26,6 +26,10 @@ class Deck:
             cards.append(self.draw())
         return cards
 
+    def putBack(self, cards):
+        for card in cards:
+            self.cards.insert(0, card)
+
     def __str__(self):
         return Card.print_pretty_cards(self.cards)
 

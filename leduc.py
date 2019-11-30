@@ -1,7 +1,41 @@
+import copy
+from collections import defaultdict
 from deuces import Card
 from deuces import Deck
 from deuces import Evaluator
+import math
 import random
+
+########################
+# Poker Game Simulator #
+########################
+
+evaluator = Evaluator()
+
+def legalActions(state):
+    def maxBet(state):
+        return min(state['player1Stack'], state['player2Stack'])
+
+    if state['currentPlayer'] == 'Dealer':
+        return ['draw_card']
+
+    if state['currentPlayer'] == 'Player1':
+        if sum(state['player1Bets']) == sum(state['player2Bets']):
+            if maxBet(state) > 0:
+                return ['check', 'bet']
+            else:
+                return ['check']
+        else:
+            return ['fold', 'call']
+
+    if state['currentPlayer'] == 'Player2':
+        if sum(state['player1Bets']) > sum(state['player2Bets']):
+            return ['fold', 'call', 'raise']
+        else:
+            if maxBet(state) > 0:
+                return ['check', 'raise']
+            else:
+                return ['check']
 
 class Poker:
     '''
@@ -134,30 +168,8 @@ class Poker:
         else:
             return False
 
-    def legalActions(self):
-        def maxBet(state):
-            return min(state['player1Stack'], state['player2Stack'])
-
-        if self.state['currentPlayer'] == 'Dealer':
-            return ['draw_card']
-
-        if self.state['currentPlayer'] == 'Player1':
-            if sum(self.state['player1Bets']) == sum(self.state['player2Bets']):
-                if maxBet(self.state) > 0:
-                    return ['check', 'bet']
-                else:
-                    return ['check']
-            else:
-                return ['fold', 'call']
-
-        if self.state['currentPlayer'] == 'Player2':
-            if sum(self.state['player1Bets']) > sum(self.state['player2Bets']):
-                return ['fold', 'call', 'raise']
-            else:
-                if maxBet(self.state) > 0:
-                    return ['check', 'raise']
-                else:
-                    return ['check']
+    def legalActions(self, state):
+        return legalActions(state)
 
     def currentUtilityEstimate(self):
         def pot(state):
@@ -184,182 +196,338 @@ class Poker:
     def player(self):
         return self.state['currentPlayer']
 
+    def getState(self):
+        return copy.deepcopy(self.state)
 
-# num_rounds = 2
-# hand_size = 2
-# leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
-# for i in range(num_rounds):
-#     if leducGame.isEnd():
-#         print('utility: {}'.format(leducGame.utility()))
-#         break
-#     while True:
-#         if leducGame.player() == 'Dealer':
-#             leducGame.state['communityCards'].append(leducGame.state['deck'].draw(1))
-#             leducGame.state['currentPlayer'] = 'Player1'
-#             break
-#         elif leducGame.player() == 'Player1':
-#             leducGame.state['currentPlayer'] = 'Player2'
-#         elif leducGame.player() == 'Player2':
-#             leducGame.state['currentPlayer'] = 'Dealer'
+################
+# RL Simulator #
+################
 
-#     leducGame.printState()
-#     print('currentUtilityEstimate: {}'.format(leducGame.currentUtilityEstimate()))
+def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
+    # Return i in [0, ..., len(probs)-1] with probability probs[i].
+    num_rounds = 5
+    hand_size = 2
 
-
-action_aggression_map = {}
-action_aggression_map['fold'] = 0
-action_aggression_map['check'] = 3
-action_aggression_map['call'] = 7
-action_aggression_map['bet'] = 7
-action_aggression_map['raise'] = 10
-
-def random_player(game):
-    return random.choice(leducGame.legalActions())
-
-def aggressive_player(game):
-    max_aggression = -10
-    chosen_action = None
-    for action in game.legalActions():
-        if action_aggression_map[action] > max_aggression:
-            max_aggression = action_aggression_map[action]
-            chosen_action = action
-    return action
-
-def baseline_player(game):
-
-    def action_given_hand_strength_pct(hand_strength_pct):
-        #print('hand_strength_pct: {}'.format(hand_strength_pct))
-        action_preference = []
-        if hand_strength_pct > 0.9:
-            action_preference = ['raise', 'call', 'bet', 'check']
-        elif hand_strength_pct > 0.8:
-            action_preference = ['call', 'bet', 'check']
-        else:
-            action_preference = ['check', 'fold']
-
-        for action in action_preference:
-            if action in game.legalActions():
-                return action
-
-    if game.player() == 'Player1':
-        hand_strength = game.evaluator.evaluate(game.state['player1Hand'], game.state['communityCards'])
-        hand_strength_pct = game.evaluator.get_five_card_rank_percentage(hand_strength)
-        return action_given_hand_strength_pct(hand_strength_pct)
-
-    elif game.player() == 'Player2':
-        hand_strength = game.evaluator.evaluate(game.state['player2Hand'], game.state['communityCards'])
-        hand_strength_pct = game.evaluator.get_five_card_rank_percentage(hand_strength)
-        return action_given_hand_strength_pct(hand_strength_pct)
-
-    else:
-        return 'draw_card'
-
-def oracle_player(game, future_cards):
-    def action_given_hand_both_strength_pct(my_hand_strength_pct, opponent_hand_strength_pct, full_community_cards):
-        # print('my_hand_strength_pct: {}, opponent_hand_strength_pct: {}'.format(my_hand_strength_pct, opponent_hand_strength_pct))
-        # fold, check, bet, call, raise
-        if my_hand_strength_pct < opponent_hand_strength_pct:
-                return 'fold'
-        else:
-            if 'raise' in game.legalActions():
-                return 'raise'
-            elif 'call' in game.legalActions():
-                return 'call'
-            elif 'bet' in game.legalActions():
-                return 'bet'
+    totalRewards = []  # The rewards we get on each trial
+    for trial in range(numTrials):
+        leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
+        player1Sequence = [] # The sequence is state, action, reward, newState
+        while True:
+            if leducGame.isEnd():
+                totalReward = leducGame.utility()
+                player1.incorporateFeedback(player1Sequence[-4], player1Sequence[-3], totalReward, player1Sequence[-1])
+                totalRewards.append(totalReward)
+                break
+            if leducGame.player() == 'Player1':
+                currState = leducGame.getState()
+                action = player1.getAction(leducGame)
+                leducGame.successor(leducGame.state, action)
+                newState = leducGame.getState()
+                player1Sequence.append(currState) # currState
+                player1Sequence.append(action) # action
+                player1Sequence.append(0.0) # reward
+                player1Sequence.append(newState) # newState
+                player1.incorporateFeedback(currState, action, 0.0, newState)
+            elif leducGame.player() == 'Player2':
+                action = player2.getAction(leducGame)
+                leducGame.successor(leducGame.state, action)
             else:
-                return 'check'
+                action = 'draw_card'
+                leducGame.successor(leducGame.state, action)
 
-    full_community_cards = game.state['communityCards']
-    if len(game.state['communityCards']) == 3:
-        full_community_cards = game.state['communityCards'] + future_cards
-    elif len(game.state['communityCards']) == 4:
-        full_community_cards = game.state['communityCards'] + [future_cards[0]]
+        if trial % 1000 == 0:
+            print('******* Game {} *******'.format(trial))
+            print('avg utility so far: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 
-    hand_strength1 = game.evaluator.evaluate(game.state['player1Hand'], full_community_cards)
-    hand_strength_pct1 = game.evaluator.get_five_card_rank_percentage(hand_strength1)
-    hand_strength2 = game.evaluator.evaluate(game.state['player2Hand'], full_community_cards)
-    hand_strength_pct2 = game.evaluator.get_five_card_rank_percentage(hand_strength2)
+    return totalRewards
 
-    if game.player() == 'Player1':
-        return action_given_hand_both_strength_pct(hand_strength_pct1, hand_strength_pct2, full_community_cards)
+#################
+# Player Agents #
+#################
+class Player:
+    def getAction(self, game):
+        return random.choice(game.legalActions(game.getState()))
+    
+    def incorporateFeedback(self, state, action, reward, newState):
+        pass
 
-    elif game.player() == 'Player2':
-        return action_given_hand_both_strength_pct(hand_strength_pct2, hand_strength_pct1, full_community_cards)
+class RandomPlayer(Player):
+    def getAction(self, game):
+        return random.choice(game.legalActions(game.getState()))
 
-    else:
-        return 'draw_card'
+class BaselinePlayer(Player):
+    def getAction(self, game):
+        def action_given_hand_strength_pct(hand_strength_pct):
+            #print('hand_strength_pct: {}'.format(hand_strength_pct))
+            action_preference = []
+            if hand_strength_pct > 0.9:
+                action_preference = ['raise', 'call', 'bet', 'check']
+            elif hand_strength_pct > 0.8:
+                action_preference = ['call', 'bet', 'check']
+            else:
+                action_preference = ['check', 'fold']
+
+            for action in action_preference:
+                if action in game.legalActions(game.getState()):
+                    return action
+
+        if game.player() == 'Player1':
+            hand_strength = game.evaluator.evaluate(game.state['player1Hand'], game.state['communityCards'])
+            hand_strength_pct = game.evaluator.get_five_card_rank_percentage(hand_strength)
+            return action_given_hand_strength_pct(hand_strength_pct)
+
+        elif game.player() == 'Player2':
+            hand_strength = game.evaluator.evaluate(game.state['player2Hand'], game.state['communityCards'])
+            hand_strength_pct = game.evaluator.get_five_card_rank_percentage(hand_strength)
+            return action_given_hand_strength_pct(hand_strength_pct)
+
+        else:
+            return 'draw_card'
+
+class OraclePlayer(Player):
+    def getAction(self, game, future_cards):
+        def action_given_hand_both_strength_pct(my_hand_strength_pct, opponent_hand_strength_pct, full_community_cards):
+            # print('my_hand_strength_pct: {}, opponent_hand_strength_pct: {}'.format(my_hand_strength_pct, opponent_hand_strength_pct))
+            # fold, check, bet, call, raise
+            if my_hand_strength_pct < opponent_hand_strength_pct:
+                    return 'fold'
+            else:
+                if 'raise' in game.legalActions(game.getState()):
+                    return 'raise'
+                elif 'call' in game.legalActions(game.getState()):
+                    return 'call'
+                elif 'bet' in game.legalActions(game.getState()):
+                    return 'bet'
+                else:
+                    return 'check'
+
+        full_community_cards = game.state['communityCards']
+        if len(game.state['communityCards']) == 3:
+            full_community_cards = game.state['communityCards'] + future_cards
+        elif len(game.state['communityCards']) == 4:
+            full_community_cards = game.state['communityCards'] + [future_cards[0]]
+
+        hand_strength1 = game.evaluator.evaluate(game.state['player1Hand'], full_community_cards)
+        hand_strength_pct1 = game.evaluator.get_five_card_rank_percentage(hand_strength1)
+        hand_strength2 = game.evaluator.evaluate(game.state['player2Hand'], full_community_cards)
+        hand_strength_pct2 = game.evaluator.get_five_card_rank_percentage(hand_strength2)
+
+        if game.player() == 'Player1':
+            return action_given_hand_both_strength_pct(hand_strength_pct1, hand_strength_pct2, full_community_cards)
+
+        elif game.player() == 'Player2':
+            return action_given_hand_both_strength_pct(hand_strength_pct2, hand_strength_pct1, full_community_cards)
+
+        else:
+            return 'draw_card'
+
+# Abstract class: an RLAlgorithm performs reinforcement learning.  All it needs
+# to know is the set of available actions to take.  The simulator (see
+# simulate()) will call getAction() to get an action, perform the action, and
+# then provide feedback (via incorporateFeedback()) to the RL algorithm, so it can adjust
+# its parameters.
+class RLAlgorithm:
+    # Your algorithm will be asked to produce an action given a state.
+    def getAction(self, state): raise NotImplementedError("Override me")
+
+    # We will call this function when simulating an MDP, and you should update
+    # parameters.
+    # If |state| is a terminal state, this function will be called with (s, a,
+    # 0, None). When this function is called, it indicates that taking action
+    # |action| in state |state| resulted in reward |reward| and a transition to state
+    # |newState|.
+    def incorporateFeedback(self, state, action, reward, newState): raise NotImplementedError("Override me")
+
+# Performs Q-learning.  Read util.RLAlgorithm for more information.
+# actions: a function that takes a state and returns a list of actions.
+# discount: a number between 0 and 1, which determines the discount factor
+# featureExtractor: a function that takes a state and action and returns a list of (feature name, feature value) pairs.
+# explorationProb: the epsilon value indicating how frequently the policy
+# returns a random action
+class QLearningAlgorithm(RLAlgorithm):
+    def __init__(self, actions, featureExtractor, explorationProb=0.2):
+        self.featureExtractor = featureExtractor
+        self.actions = actions
+        self.explorationProb = explorationProb
+        self.weights = defaultdict(float)
+        self.numIters = 0
+
+    # Return the Q function associated with the weights and features
+    def getQ(self, state, action):
+        score = 0
+        for f, v in self.featureExtractor(state, action):
+            score += self.weights[f] * v
+        return score
+
+    # This algorithm will produce an action given a state.
+    # Here we use the epsilon-greedy algorithm: with probability
+    # |explorationProb|, take a random action.
+    def getAction(self, game):
+        self.numIters += 1
+        if random.random() < self.explorationProb:
+            return random.choice(self.actions(game.getState()))
+        else:
+            return max((self.getQ(game.getState(), action), action) for action in self.actions(game.getState()))[1]
+
+    # Call this function to get the step size to update the weights.
+    def getStepSize(self):
+        return 1.0 / math.sqrt(self.numIters)
+
+    # We will call this function with (s, a, r, s'), which you should use to update |weights|.
+    # Note that if s is a terminal state, then s' will be None.  Remember to check for this.
+    # You should update the weights using self.getStepSize(); use
+    # self.getQ() to compute the current estimate of the parameters.
+    def incorporateFeedback(self, state, action, reward, newState):
+        # BEGIN_YOUR_CODE (our solution is 9 lines of code, but don't worry if you deviate from this)
+        if newState == None:
+            return
+        else:
+            V_estimate_new_state = max([self.getQ(newState, action) for action in self.actions(newState)])
+            new_Q_estimate = reward + V_estimate_new_state
+            current_Q_estimate = self.getQ(state, action)
+            step_size = self.getStepSize()
+            for f, v in self.featureExtractor(state, action):
+                self.weights[f] += step_size * (new_Q_estimate - current_Q_estimate)*v
+        # END_YOUR_CODE
+
+# Return a single-element list containing a binary (indicator) feature
+# for the existence of the (state, action) pair.  Provides no generalization.
+def simpleFeatureExtractor(state, action):
+
+    hand_strength = evaluator.evaluate(state['player1Hand'], state['communityCards'])
+    hand_strength_pct = evaluator.get_five_card_rank_percentage(hand_strength)
+
+    return [('hand_strength', hand_strength_pct), (action, 1.0)]
 
 
-leducGame = Poker(hand_size=1)
-leducGame.printState()
-print("*********************\n")
-leducGame.successor(leducGame.state, 'bet')
-leducGame.printState()
-leducGame.successor(leducGame.state, 'raise')
-leducGame.printState()
-leducGame.successor(leducGame.state, 'call')
-leducGame.printState()
+# leducGame = Poker(hand_size=1)
+# leducGame.printState()
+# print("*********************\n")
+# leducGame.successor(leducGame.state, 'bet')
+# leducGame.printState()
+# leducGame.successor(leducGame.state, 'raise')
+# leducGame.printState()
+# leducGame.successor(leducGame.state, 'call')
+# leducGame.printState()
 
+
+# print('Random vs. Random')
+# num_rounds = 5
+# hand_size = 2
+# N = 1000
+
+# utilities1 = []
+
+# # Simulate basline player against random player
+# for i in xrange(N):
+#     random_player = RandomPlayer()
+#     leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
+#     while True:
+#         if leducGame.isEnd():
+#             #print('utility: {}'.format(leducGame.utility()))
+#             utilities1.append(leducGame.utility())
+#             break
+#         #print('player: {}'.format(leducGame.player()))
+#         #print('legal legalActions: {}'.format(leducGame.legalActions()))
+#         if leducGame.player() == 'Player1':
+#             action = random_player.getAction(leducGame)
+#         elif leducGame.player() == 'Player2':
+#             action = random_player.getAction(leducGame)
+#         else:
+#             action = 'draw_card'
+#         #print('action take: {}'.format(action))
+#         leducGame.successor(leducGame.state, action)
+#     if i % 1000 == 0:
+#         print("************game:{}***************".format(i))
+
+# print('avg utility: {}'.format(sum(utilities1)*1.0/len(utilities1)))
+
+# print('Baseline vs. Random')
+# utilities2 = []
+# # Simulate oracle player against random player
+# for i in xrange(N):
+#     baseline_player = BaselinePlayer()
+#     random_player = RandomPlayer()
+#     leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
+#     while True:
+#         if leducGame.isEnd():
+#             #print('utility: {}'.format(leducGame.utility()))
+#             utilities2.append(leducGame.utility())
+#             break
+#         #print('player: {}'.format(leducGame.player()))
+#         #print('legal legalActions: {}'.format(leducGame.legalActions()))
+#         if leducGame.player() == 'Player1':
+#             action = baseline_player.getAction(leducGame)
+#         elif leducGame.player() == 'Player2':
+#             action = random_player.getAction(leducGame)
+#         else:
+#             action = 'draw_card'
+        
+#         # print('action take: {}'.format(action))
+#         leducGame.successor(leducGame.state, action)
+#     if i % 1000 == 0:
+#         print("************game:{}***************".format(i))
+
+# print('avg utility: {}'.format(sum(utilities2)*1.0/len(utilities2)))
+
+
+# print('Oracle vs. Random')
+# utilities3 = []
+# # Simulate oracle player against random player
+# for i in xrange(N):
+#     oracle_player = OraclePlayer()
+#     random_player = RandomPlayer()
+
+#     leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
+#     future_cards = leducGame.state['deck'].draw(2)
+#     leducGame.state['deck'].putBack(future_cards)
+#     while True:
+#         if leducGame.isEnd():
+#             #print('utility: {}'.format(leducGame.utility()))
+#             utilities3.append(leducGame.utility())
+#             break
+#         #print('player: {}'.format(leducGame.player()))
+#         #print('legal legalActions: {}'.format(leducGame.legalActions()))
+#         if leducGame.player() == 'Player1':
+#             action = oracle_player.getAction(leducGame, future_cards)
+#         elif leducGame.player() == 'Player2':
+#             action = random_player.getAction(leducGame)
+#         else:
+#             action = 'draw_card'
+        
+#         # print('action take: {}'.format(action))
+#         leducGame.successor(leducGame.state, action)
+#     if i % 1000 == 0:
+#         print("************game:{}***************".format(i))
+
+# print('avg utility: {}'.format(sum(utilities3)*1.0/len(utilities3)))
+
+
+# baseline_player = BaselinePlayer()
+# random_player = RandomPlayer()
+# totalRewards = simulate(baseline_player, random_player, numTrials=1000)
+
+# print('avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 
 print('Random vs. Random')
-num_rounds = 5
-hand_size = 2
+random_player = RandomPlayer()
+totalRewards = simulate(random_player, random_player, numTrials=5000)
 
-utilities1 = []
-
-# Simulate basline player against random player
-for i in xrange(10000):
-    leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
-    while True:
-        if leducGame.isEnd():
-            #print('utility: {}'.format(leducGame.utility()))
-            utilities1.append(leducGame.utility())
-            break
-        #print('player: {}'.format(leducGame.player()))
-        #print('legal legalActions: {}'.format(leducGame.legalActions()))
-        if leducGame.player() == 'Player1':
-            action = random_player(leducGame)
-        elif leducGame.player() == 'Player2':
-            action = random_player(leducGame)
-        else:
-            action = 'draw_card'
-        #print('action take: {}'.format(action))
-        leducGame.successor(leducGame.state, action)
-    if i % 1000 == 0:
-        print("************game:{}***************".format(i))
-
-print('avg utility: {}'.format(sum(utilities1)*1.0/len(utilities1)))
-# print('utilities1: {}'.format(utilities1))
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
 
 print('Baseline vs. Random')
+baseline_player = BaselinePlayer()
+random_player = RandomPlayer()
+totalRewards = simulate(baseline_player, random_player, numTrials=5000)
 
-utilities2 = []
-# Simulate oracle player against random player
-for i in xrange(10000):
-    leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
-    future_cards = leducGame.state['deck'].draw(2)
-    leducGame.state['deck'].putBack(future_cards)
-    while True:
-        if leducGame.isEnd():
-            #print('utility: {}'.format(leducGame.utility()))
-            utilities2.append(leducGame.utility())
-            break
-        #print('player: {}'.format(leducGame.player()))
-        #print('legal legalActions: {}'.format(leducGame.legalActions()))
-        if leducGame.player() == 'Player1':
-            action = oracle_player(leducGame, future_cards)
-        elif leducGame.player() == 'Player2':
-            action = random_player(leducGame)
-        else:
-            action = 'draw_card'
-        
-        # print('action take: {}'.format(action))
-        leducGame.successor(leducGame.state, action)
-    if i % 1000 == 0:
-        print("************game:{}***************".format(i))
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
 
-print('avg utility: {}'.format(sum(utilities2)*1.0/len(utilities2)))
-# print('utilities2: {}'.format(utilities2))
+print('Simple RL vs. Random')
+simple_rl_player = QLearningAlgorithm(legalActions, simpleFeatureExtractor)
+random_player = RandomPlayer()
+totalRewards = simulate(simple_rl_player, random_player, numTrials=5000)
 
-print('Oracle vs. Random')
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
