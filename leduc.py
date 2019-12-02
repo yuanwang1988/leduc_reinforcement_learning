@@ -59,6 +59,7 @@ class Poker:
         self.player1StackStart = player1Stack
         self.player2StackStart = player2Stack
         self.evaluator = Evaluator()
+        self.future_cards_for_oracle = []
         self.state = {}
         self.state['deck'] = Deck()
         self.state['currentPlayer'] = 'Player1'
@@ -201,6 +202,8 @@ class Poker:
 
 ################
 # RL Simulator #
+# Assume only player1 can be a RL player, 
+# player1 and player2 can both be random, baseline, random players.
 ################
 
 def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
@@ -212,6 +215,10 @@ def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
     for trial in range(numTrials):
         leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
         player1Sequence = [] # The sequence is state, action, reward, newState
+        # For player2 is oracle player usecase.
+        if isinstance(player2, OraclePlayer):
+            leducGame.future_cards_for_oracle = leducGame.state['deck'].draw(2)
+            leducGame.state['deck'].putBack(leducGame.future_cards_for_oracle)
         while True:
             if leducGame.isEnd():
                 totalReward = leducGame.utility()
@@ -245,7 +252,7 @@ def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
                 if leducGame.player() == 'Player1':
                     player1.incorporateFeedback(player1Sequence[-4], player1Sequence[-3], 0, player1Sequence[-1])
 
-        if trial % 1000 == 0:
+        if trial % 10000 == 0:
             print('******* Game {} *******'.format(trial))
             print('avg utility so far: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 
@@ -295,7 +302,7 @@ class BaselinePlayer(Player):
             return 'draw_card'
 
 class OraclePlayer(Player):
-    def getAction(self, game, future_cards):
+    def getAction(self, game):
         def action_given_hand_both_strength_pct(my_hand_strength_pct, opponent_hand_strength_pct, full_community_cards):
             # print('my_hand_strength_pct: {}, opponent_hand_strength_pct: {}'.format(my_hand_strength_pct, opponent_hand_strength_pct))
             # fold, check, bet, call, raise
@@ -313,9 +320,9 @@ class OraclePlayer(Player):
 
         full_community_cards = game.state['communityCards']
         if len(game.state['communityCards']) == 3:
-            full_community_cards = game.state['communityCards'] + future_cards
+            full_community_cards = game.state['communityCards'] + game.future_cards_for_oracle
         elif len(game.state['communityCards']) == 4:
-            full_community_cards = game.state['communityCards'] + [future_cards[0]]
+            full_community_cards = game.state['communityCards'] + [game.future_cards_for_oracle[0]]
 
         hand_strength1 = game.evaluator.evaluate(game.state['player1Hand'], full_community_cards)
         hand_strength_pct1 = game.evaluator.get_five_card_rank_percentage(hand_strength1)
@@ -437,8 +444,8 @@ def handPotRoundsActionFeatureExtractor(state, action):
 #     random_player = RandomPlayer()
 
 #     leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
-#     future_cards = leducGame.state['deck'].draw(2)
-#     leducGame.state['deck'].putBack(future_cards)
+#     self.future_cards_for_oracle = leducGame.state['deck'].draw(2)
+#     leducGame.state['deck'].putBack(self.future_cards_for_oracle)
 #     while True:
 #         if leducGame.isEnd():
 #             #print('utility: {}'.format(leducGame.utility()))
@@ -447,7 +454,7 @@ def handPotRoundsActionFeatureExtractor(state, action):
 #         #print('player: {}'.format(leducGame.player()))
 #         #print('legal legalActions: {}'.format(leducGame.legalActions()))
 #         if leducGame.player() == 'Player1':
-#             action = oracle_player.getAction(leducGame, future_cards)
+#             action = oracle_player.getAction(leducGame)
 #         elif leducGame.player() == 'Player2':
 #             action = random_player.getAction(leducGame)
 #         else:
@@ -482,28 +489,29 @@ def handPotRoundsActionFeatureExtractor(state, action):
 # print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 # print('==============')
 
+#-------------------Trainning-------------------#
 print('=========================')
 print('Hand Action RL vs. Random')
 print('=========================')
 hand_action_rl_player = QLearningAlgorithm(legalActions, handActionFeatureExtractor, explorationProb=0.2)
 random_player = RandomPlayer()
-
 totalRewards = simulate(hand_action_rl_player, random_player, numTrials=50000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
-
+#-------------------Evaluation-------------------#
 hand_action_rl_player.explorationProb = 0.0
 totalRewards = simulate(hand_action_rl_player, random_player, numTrials=10000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
 
-print('Weights Learned:')
-weights =  sorted([(k, v) for k, v in hand_action_rl_player.weights.items()], key=lambda x: x[1])
+# print('Weights Learned:')
+# weights =  sorted([(k, v) for k, v in hand_action_rl_player.weights.items()], key=lambda x: x[1])
 
-for k, v in weights:
-    if v != 0:
-        print('{}: {:.2f}'.format(k, v))
+# for k, v in weights:
+#     if v != 0:
+#         print('{}: {:.2f}'.format(k, v))
 
+#-------------------Trainning-------------------#
 print('=============================')
 print('Hand Pot Action RL vs. Random')
 print('=============================')
@@ -513,19 +521,20 @@ random_player = RandomPlayer()
 totalRewards = simulate(hand_pot_action_rl_player, random_player, numTrials=50000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
-
+#-------------------Evaluation-------------------#
 hand_pot_action_rl_player.explorationProb = 0.0
 totalRewards = simulate(hand_pot_action_rl_player, random_player, numTrials=10000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
 
-print('Weights Learned:')
-weights =  sorted([(k, v) for k, v in hand_pot_action_rl_player.weights.items()], key=lambda x: x[1])
+# print('Weights Learned:')
+# weights =  sorted([(k, v) for k, v in hand_pot_action_rl_player.weights.items()], key=lambda x: x[1])
 
-for k, v in weights:
-    if v != 0:
-        print('{}: {:.2f}'.format(k, v))
+# for k, v in weights:
+#     if v != 0:
+#         print('{}: {:.2f}'.format(k, v))
 
+#-------------------Trainning-------------------#
 print('========================================')
 print('Hand Pot Action Num Rounds RL vs. Random')
 print('========================================')
@@ -535,9 +544,56 @@ random_player = RandomPlayer()
 totalRewards = simulate(hand_pot_rounds_action_rl_player, random_player, numTrials=50000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
-
+#-------------------Evaluation-------------------#
 hand_pot_rounds_action_rl_player.explorationProb = 0.0
 totalRewards = simulate(hand_pot_rounds_action_rl_player, random_player, numTrials=10000)
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
+
+# print('Weights Learned:')
+# weights =  sorted([(k, v) for k, v in hand_pot_rounds_action_rl_player.weights.items()], key=lambda x: x[1])
+
+# for k, v in weights:
+#     if v != 0:
+#         print('{}: {:.2f}'.format(k, v))
+
+#-------------------Trainning-------------------#
+print('==========================================')
+print('Hand Pot Action Num Rounds RL vs. Baseline')
+print('==========================================')
+hand_pot_rounds_action_rl_player = QLearningAlgorithm(legalActions, handPotRoundsActionFeatureExtractor, explorationProb=0.2)
+baseline_player = BaselinePlayer()
+
+totalRewards = simulate(hand_pot_rounds_action_rl_player, baseline_player, numTrials=50000)
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
+#-------------------Evaluation-------------------#
+hand_pot_rounds_action_rl_player.explorationProb = 0.0
+totalRewards = simulate(hand_pot_rounds_action_rl_player, baseline_player, numTrials=10000)
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
+
+# print('Weights Learned:')
+# weights =  sorted([(k, v) for k, v in hand_pot_rounds_action_rl_player.weights.items()], key=lambda x: x[1])
+
+# for k, v in weights:
+#     if v != 0:
+#         print('{}: {:.2f}'.format(k, v))
+
+
+#-------------------Trainning-------------------#
+print('==========================================')
+print('Hand Pot Action Num Rounds RL vs. Oracle')
+print('==========================================')
+hand_pot_rounds_action_rl_player = QLearningAlgorithm(legalActions, handPotRoundsActionFeatureExtractor, explorationProb=0.2)
+oracle_player = OraclePlayer()
+
+totalRewards = simulate(hand_pot_rounds_action_rl_player, oracle_player, numTrials=1000)
+print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
+print('==============')
+#-------------------Evaluation-------------------#
+hand_pot_rounds_action_rl_player.explorationProb = 0.0
+totalRewards = simulate(hand_pot_rounds_action_rl_player, oracle_player, numTrials=1000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
 
@@ -547,3 +603,4 @@ weights =  sorted([(k, v) for k, v in hand_pot_rounds_action_rl_player.weights.i
 for k, v in weights:
     if v != 0:
         print('{}: {:.2f}'.format(k, v))
+
