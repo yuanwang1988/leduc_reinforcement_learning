@@ -588,12 +588,12 @@ print('==========================================')
 hand_pot_rounds_action_rl_player = QLearningAlgorithm(legalActions, handPotRoundsActionFeatureExtractor, explorationProb=0.2)
 oracle_player = OraclePlayer()
 
-totalRewards = simulate(hand_pot_rounds_action_rl_player, oracle_player, numTrials=1000)
+totalRewards = simulate(hand_pot_rounds_action_rl_player, oracle_player, numTrials=50000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
 #-------------------Evaluation-------------------#
 hand_pot_rounds_action_rl_player.explorationProb = 0.0
-totalRewards = simulate(hand_pot_rounds_action_rl_player, oracle_player, numTrials=1000)
+totalRewards = simulate(hand_pot_rounds_action_rl_player, oracle_player, numTrials=10000)
 print('Final avg utility: {}'.format(sum(totalRewards)*1.0/len(totalRewards)))
 print('==============')
 
