@@ -216,7 +216,7 @@ def simulate(player1, player2, numTrials=1000, verbose=False, sort=False):
         leducGame = Poker(hand_size=hand_size, num_rounds=num_rounds)
         player1Sequence = [] # The sequence is state, action, reward, newState
         # For player2 is oracle player usecase.
-        if isinstance(player2, OraclePlayer):
+        if isinstance(player1, OraclePlayer) or isinstance(player2, OraclePlayer):
             leducGame.future_cards_for_oracle = leducGame.state['deck'].draw(2)
             leducGame.state['deck'].putBack(leducGame.future_cards_for_oracle)
         while True:
